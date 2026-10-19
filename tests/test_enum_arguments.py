@@ -110,10 +110,10 @@ class EnumArgumentTest(unittest.TestCase):
         ]
         for nullable in (False, True):
             for allow_empty in (False, True):
-                forms = [("single", None), ("default", '"a"')]
+                forms = [("single", None), ("default", '"a"'),
+                         ("trailing", None), ("followed", None)]
                 if nullable:
-                    forms += [("trailing", None), ("followed", None),
-                              ("null_default", "nullptr")]
+                    forms += [("null_default", "nullptr")]
                 for form, default in forms:
                     arg = {"optional": True, "type": {
                         "kind": "Enum", "name": "TestEnum", "nullable": nullable,
@@ -134,9 +134,18 @@ class EnumArgumentTest(unittest.TestCase):
                     code.append("return describe(value); }")
                     for label, kind, text in inputs:
                         if kind == "Undefined":
-                            result = ("value:a" if default == '"a"' else
-                                      "null" if default == "nullptr" or
-                                      form == "followed" else "omitted")
+                            # A missing argument keeps the declared initial
+                            # value: the default, null for a nullable enum,
+                            # or the empty sentinel string; only a trailing
+                            # omission is counted.
+                            if default == '"a"':
+                                result = "value:a"
+                            elif default == "nullptr":
+                                result = "null"
+                            elif form == "followed":
+                                result = "null" if nullable else "value:"
+                            else:
+                                result = "omitted"
                             count = 0
                         elif kind == "Null":
                             result = "null" if nullable else "TypeError"
