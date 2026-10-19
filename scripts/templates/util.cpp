@@ -448,13 +448,19 @@ if (!std::isfinite({{names.vname}})) {
         {%- elif arg.optional %}
         {# '(4) Optional + No-DefaultValue' #}
             {% if need_counting %}
-            {# undefined is a missing argument even when a later argument is
-               provided; only trailing omissions change the argument count. #}
+            {% if arg.type.kind == 'Enum' %}
+            {# Enums have an initialized missing-value representation. Other
+               types still need conversion before a supplied argument. #}
     if ({{ names.aname }}->isUndefined()) {
         if (argCounting) {
             validArgCount--;
         }
     } else {
+            {% else %}
+    if (argCounting && {{ names.aname }}->isUndefined()) {
+        validArgCount--;
+    } else {
+            {% endif %}
         argCounting = false;
         {{ assign_exp_with_check|indent(8) }}
     }
