@@ -496,7 +496,7 @@ if (!std::isfinite({{names.vname}})) {
            nullable enum, are not converted, so judge them by the JS value;
            a provided "" is only valid when the enum declares it. #}
         {% if arg.type.nullable %}
-        else if ({{ names.aname }}->isNull()) { hasRightValue = true; }
+        else if ({{ names.aname }}->isUndefinedOrNull()) { hasRightValue = true; }
         {% endif %}
         {% if arg.optional or (names.kname and not arg.required) %}
         else if ({{ names.aname }}->isUndefined()) { hasRightValue = true; }

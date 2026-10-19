@@ -144,11 +144,12 @@ class EnumArgumentTest(unittest.TestCase):
         for nullable in (False, True):
             for allow_empty in (False, True):
                 forms = [("single", None), ("default", '"a"'),
-                         ("trailing", None), ("followed", None)]
+                         ("trailing", None), ("followed", None),
+                         ("required", None)]
                 if nullable:
                     forms += [("null_default", "nullptr")]
                 for form, default in forms:
-                    arg = {"optional": True, "type": {
+                    arg = {"optional": form != "required", "type": {
                         "kind": "Enum", "name": "TestEnum", "nullable": nullable,
                         "data": ["a"] + ([""] if allow_empty else [])}}
                     if default is not None:
@@ -170,16 +171,22 @@ class EnumArgumentTest(unittest.TestCase):
                             # A missing argument keeps the declared initial
                             # value: the default, null for a nullable enum,
                             # or the empty sentinel string; only a trailing
-                            # omission is counted.
-                            if default == '"a"':
-                                result = "value:a"
-                            elif default == "nullptr":
-                                result = "null"
-                            elif form == "followed":
-                                result = "null" if nullable else "value:"
+                            # omission is counted. A required argument is
+                            # converted: undefined is null for a nullable
+                            # enum and the invalid string "undefined" else.
+                            if form == "required":
+                                result = "null" if nullable else "TypeError"
+                                count = 0 if nullable else 1
                             else:
-                                result = "omitted"
-                            count = 0
+                                if default == '"a"':
+                                    result = "value:a"
+                                elif default == "nullptr":
+                                    result = "null"
+                                elif form == "followed":
+                                    result = "null" if nullable else "value:"
+                                else:
+                                    result = "omitted"
+                                count = 0
                         elif kind == "Null":
                             result = "null" if nullable else "TypeError"
                             count = 0 if nullable else 1
