@@ -412,6 +412,8 @@ if (!std::isfinite({{names.vname}})) {
     {% set check_type = gen_check_type_exception(arg.type, names.aname, skip_type_check)|trim %}
     {% if arg.type.kind.startswith('SequenceOf') or arg.type.kind.startswith('FrozenArrayOf') %}
     {% set assign_exp = get_arrayobject_to_native(arg.type, names.aname, names.vname) %}
+    {% elif arg.type.kind == 'Enum' and arg.type.nullable %}
+    {% set assign_exp = '%s = %s->isUndefinedOrNull() ? nullptr : %s;'|format(names.vname, names.aname, gen_esvalue_to_native(arg.type, names.aname, fromattr)) %}
     {% else %}
     {% set assign_exp = '%s = %s;'|format(names.vname, gen_esvalue_to_native(arg.type, names.aname, fromattr)) %}
     {% endif %}
