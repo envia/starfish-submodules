@@ -4,6 +4,11 @@
     {% set fn_name = '%s%s'|format(function.name, name)
                       if function.custom else function.name %}
     {% set fn_static = function.static if not function.operations else function.operations[0].static %}
+    {% if function.exposed == ['Window'] %}
+    if (scriptBindingInstance->hasWindow()) {
+    {% elif function.exposed == ['Worker'] %}
+    if (!scriptBindingInstance->hasWindow()) {
+    {% endif %}
     StringRef* {{ function.name }}String = StringRef::createFromASCII("{{ function.name }}");
     {% if fn_static %}
         {% set object %}{{ name }}Function{% endset %}
@@ -26,5 +31,8 @@
                             ValueRef::create({{fn_name}}ESFn),
                             {{ writable }}/* writable */, {{ enumerable }}/* enumerable */, {{ configurable }}/* configurable */
                             );
+    {% if function.exposed == ['Window'] or function.exposed == ['Worker'] %}
+    }
+    {% endif %}
 {% endcall %}
 {% endif %}

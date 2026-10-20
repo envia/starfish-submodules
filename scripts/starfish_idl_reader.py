@@ -562,6 +562,10 @@ class StarfishIDLReader():
     IRUtils.set_prop_to_dict(forward, 'stringifier', True)
     stringifier = self._gen_ir_tostring(forward)
 
+    if extAttrs is not None:
+      _handle_extattrs(stringifier, extAttrs.GetChildren(),
+                      [_hd_extattr_exposed])
+
     if forward is not None:
       IRUtils.set_prop_to_dict(stringifier, 'flags', forward.get('flags', None))
       IRUtils.set_prop_to_dict(stringifier, 'unimplemented', forward.get('unimplemented', None))
