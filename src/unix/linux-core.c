@@ -115,6 +115,10 @@ int uv__platform_loop_init(uv_loop_t* loop) {
 
 
 void uv__platform_loop_delete(uv_loop_t* loop) {
+  if (loop->watchers != NULL) {
+    uv__free(loop->watchers[loop->nwatchers]);
+    loop->watchers[loop->nwatchers] = NULL;
+  }
   if (loop->inotify_fd == -1) return;
   uv__io_stop(loop, &loop->inotify_read_watcher, POLLIN);
   uv__close(loop->inotify_fd);
@@ -186,7 +190,10 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
   static const int max_safe_timeout = 1789569;
   static int no_epoll_pwait;
   static int no_epoll_wait;
-  struct uv__epoll_event events[1024];
+  enum { max_events = 1024 };
+  struct uv__epoll_event* events;
+  void* parent_events;
+  void* parent_count;
   struct uv__epoll_event* pe;
   struct uv__epoll_event e;
   int real_timeout;
@@ -207,6 +214,23 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     assert(QUEUE_EMPTY(&loop->watcher_queue));
     return;
   }
+
+  /* A large uninitialized stack array preserves pointers from retired
+   * callbacks and makes conservative collectors retain their object graphs.
+   * Cache the output buffer outside the stack instead of clearing it on
+   * every poll. maybe_resize() preserves these two reserved watcher slots.
+   */
+  parent_events = loop->watchers[loop->nwatchers];
+  parent_count = loop->watchers[loop->nwatchers + 1];
+  events = parent_events;
+  /* A nested poll must not overwrite events its caller is still dispatching. */
+  if (events == NULL || parent_count != NULL) {
+    events = uv__malloc(max_events * sizeof(*events));
+    if (events == NULL)
+      abort();
+  }
+  loop->watchers[loop->nwatchers] = (void*)events;
+  loop->watchers[loop->nwatchers + 1] = NULL;
 
   while (!QUEUE_EMPTY(&loop->watcher_queue)) {
     q = QUEUE_HEAD(&loop->watcher_queue);
@@ -269,7 +293,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     if (no_epoll_wait != 0 || (sigmask != 0 && no_epoll_pwait == 0)) {
       nfds = uv__epoll_pwait(loop->backend_fd,
                              events,
-                             ARRAY_SIZE(events),
+                             max_events,
                              timeout,
                              sigmask);
       if (nfds == -1 && errno == ENOSYS)
@@ -277,7 +301,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     } else {
       nfds = uv__epoll_wait(loop->backend_fd,
                             events,
-                            ARRAY_SIZE(events),
+                            max_events,
                             timeout);
       if (nfds == -1 && errno == ENOSYS)
         no_epoll_wait = 1;
@@ -297,7 +321,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
       assert(timeout != -1);
 
       if (timeout == 0)
-        return;
+        goto done;
 
       /* We may have been inside the system call for longer than |timeout|
        * milliseconds so we need to update the timestamp to avoid drift.
@@ -319,7 +343,7 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
         continue;
 
       if (timeout == 0)
-        return;
+        goto done;
 
       /* Interrupted by a signal. Update timeout and poll again. */
       goto update_timeout;
@@ -395,23 +419,22 @@ void uv__io_poll(uv_loop_t* loop, int timeout) {
     if (have_signals != 0)
       loop->signal_io_watcher.cb(loop, &loop->signal_io_watcher, POLLIN);
 
-    loop->watchers[loop->nwatchers] = NULL;
     loop->watchers[loop->nwatchers + 1] = NULL;
 
     if (have_signals != 0)
-      return;  /* Event loop should cycle now so don't poll again. */
+      goto done;  /* Event loop should cycle now so don't poll again. */
 
     if (nevents != 0) {
-      if (nfds == ARRAY_SIZE(events) && --count != 0) {
+      if (nfds == max_events && --count != 0) {
         /* Poll for more events but don't block this time. */
         timeout = 0;
         continue;
       }
-      return;
+      goto done;
     }
 
     if (timeout == 0)
-      return;
+      goto done;
 
     if (timeout == -1)
       continue;
@@ -421,9 +444,16 @@ update_timeout:
 
     real_timeout -= (loop->time - base);
     if (real_timeout <= 0)
-      return;
+      goto done;
 
     timeout = real_timeout;
+  }
+
+done:
+  loop->watchers[loop->nwatchers + 1] = parent_count;
+  if (parent_count != NULL) {
+    uv__free(events);
+    loop->watchers[loop->nwatchers] = parent_events;
   }
 }
 
