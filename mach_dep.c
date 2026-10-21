@@ -2,6 +2,7 @@
  * Copyright 1988, 1989 Hans-J. Boehm, Alan J. Demers
  * Copyright (c) 1991-1994 by Xerox Corporation.  All rights reserved.
  * Copyright (c) 2008-2025 Ivan Maidanski
+ * Modified in 2026 to initialize register-save storage.
  *
  * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
@@ -44,8 +45,9 @@ GC_with_callee_saves_pushed(GC_with_callee_saves_func fn, ptr_t arg)
   volatile ptr_t context = 0;
 
 #  if defined(ESCARGOT_USE_32BIT_IN_64BIT)
-  jmp_buf regs;
-  jmp_buf regs_32_to_64_expand[2];
+  /* Scanned even when getcontext skips the setjmp fallback. */
+  jmp_buf regs = { 0 };
+  jmp_buf regs_32_to_64_expand[2] = { 0 };
 #  endif
 
 #  if defined(EMSCRIPTEN) || defined(HAVE_BUILTIN_UNWIND_INIT)               \
@@ -71,7 +73,8 @@ GC_with_callee_saves_pushed(GC_with_callee_saves_func fn, ptr_t arg)
 
   /* The variable is set to -1 (means broken) or 1 (means it works). */
   static MAY_THREAD_LOCAL signed char getcontext_works = 0;
-  ucontext_t ctxt;
+  /* getcontext does not fill every field or padding byte. */
+  ucontext_t ctxt = { 0 };
 #      ifdef GETCONTEXT_FPU_EXCMASK_BUG
   /*
    * Workaround a bug (clearing the FPU exception mask) in `getcontext`
