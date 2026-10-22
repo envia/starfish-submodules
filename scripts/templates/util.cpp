@@ -359,6 +359,22 @@ if (!std::isfinite({{names.vname}})) {
     {% endfor %}
 {% endmacro %}
 
+{%- macro gen_check_enum(arg, names, fromattr) -%}
+    {% if arg.type.kind == "Enum" and fromattr == False %}
+{
+    bool hasRightValue = false;
+    if (false) {}
+    {% for data in arg.type.data %}
+    else if ({{ names.vname }}->equals("{{ data }}")) { hasRightValue = true; }
+    {% endfor %}
+
+    if (!hasRightValue) {
+        state->throwException(TypeErrorObjectRef::create(state, StringRef::createFromASCII("the provided value for {{ arg.type.name }} is not valid")));
+    }
+}
+    {% endif %}
+{%- endmacro %}
+
 {%- macro handle_arg(arg, names, fromattr=False, skip_type_check=False, need_counting=False) %}
     {% set use_nullable = is_non_nullable_type(arg.type.kind) and arg.type.nullable %}
     {% set type_exp = gen_type_str(arg.type, use_nullable) %}
@@ -416,7 +432,11 @@ if (!std::isfinite({{names.vname}})) {
     {% set assign_exp = '%s = %s;'|format(names.vname, gen_esvalue_to_native(arg.type, names.aname, fromattr)) %}
     {% endif %}
     {% set check_finite_number = gen_check_finite_number(arg, names) %}
-    {% set assign_exp_with_check = '%s\n%s\n%s'|format(check_type, assign_exp, check_finite_number)|trim %}
+    {# Validate converted enum values, not absent members or nullable nulls.
+       Optionality does not add the empty string to an enum's values.
+       https://webidl.spec.whatwg.org/#es-enumeration #}
+    {% set check_enum = gen_check_enum(arg, names, fromattr) %}
+    {% set assign_exp_with_check = '%s\n%s\n%s\n%s'|format(check_type, assign_exp, check_finite_number, check_enum)|trim %}
     {% if (arg.type.kind == 'Callback') and fromattr %}
     {{ assign_exp|indent(4) }}
     {% else %}
@@ -475,23 +495,6 @@ if (!std::isfinite({{names.vname}})) {
         {% endif %}
     {% endif %}
 
-    {###### enum check ######}
-    {% if arg.type.kind == "Enum" and fromattr == False %}
-    {
-        bool hasRightValue = false;
-        if (false) {}
-        {% if not arg.required %}
-        else if ({{ names.vname }}->equals("")) { hasRightValue = true; }
-        {% endif %}
-        {% for data in arg.type.data %}
-        else if ({{ names.vname }}->equals("{{ data }}")) { hasRightValue = true; }
-        {% endfor %}
-
-        if (!hasRightValue) {
-            state->throwException(TypeErrorObjectRef::create(state, StringRef::createFromASCII("the provided value for {{ arg.type.name }} is not valid")));
-        }
-    }
-    {% endif %}
 {% endmacro -%}
 
 {################## 'HANDLE RETURNS' ##################}
